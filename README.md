@@ -86,6 +86,15 @@ Point `argocd/root-app.yaml` and `argocd/apps/values.yaml` at your fork to drive
 - GitOps e2e: Argo CD on kind syncs the app-of-apps at the exact commit under test, all three
   environments roll out, then manual drift (`kubectl scale`) is injected and must be reverted by self-heal
 
+## Design decisions
+
+- [ADR 0001](docs/adr/0001-app-of-apps-helm-chart.md): an app-of-apps Helm chart renders one
+  Application per environment, so it is unit-tested and CI can pin every child to one commit.
+- [ADR 0002](docs/adr/0002-promotion-by-environment-values.md): promotion is a values change in
+  `environments/<env>` on one branch. Chart changes reach all three environments in one sync.
+- [ADR 0003](docs/adr/0003-prod-self-heal-without-auto-prune.md): prod auto-syncs and self-heals
+  but never auto-prunes, so a bad commit cannot delete production resources.
+
 ## Limits
 
 - Single cluster. Multi-cluster delivery would need ApplicationSets or one root app per cluster.
