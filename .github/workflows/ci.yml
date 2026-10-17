@@ -1,0 +1,123 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v3.16.2
+  KUBECONFORM_VERSION: v0.6.7
+  HELM_UNITTEST_VERSION: v0.6.3
+
+jobs:
+  static:
+    name: lint · unit tests · schema validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: helm lint (strict)
+        run: |
+          helm lint --strict charts/web-service
+          for env in environments/*/; do helm lint --strict charts/web-service -f "${env}values.yaml"; done
+          helm lint --strict argocd/apps
+      - name: helm-unittest
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version "${HELM_UNITTEST_VERSION}"
+          helm unittest charts/web-service argocd/apps
+      - name: kubeconform (all environments + Argo CD CRDs)
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | sudo tar xz -C /usr/local/bin kubeconform
+          ./scripts/validate.sh
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: helm/chart-testing-action@v2
+      - name: chart-testing lint
+        run: ct lint --config ct.yaml --all
+
+  install:
+    name: kind · ct install + helm test
+    needs: static
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: helm/chart-testing-action@v2
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: ct
+      - name: ct install (every ci/*-values.yaml, then helm test)
+        run: ct install --config ct.yaml --all
+
+  gitops-e2e:
+    name: kind · Argo CD app-of-apps end-to-end
+    needs: static
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      ARGOCD_VERSION: v2.13.3
+    steps:
+      - uses: actions/checkout@v5
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: gitops
+      - name: Install Argo CD
+        run: |
+          kubectl create namespace argocd
+          kubectl apply -n argocd --server-side --force-conflicts \
+            -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
+          kubectl -n argocd rollout status deploy/argocd-repo-server --timeout=300s
+          kubectl -n argocd rollout status deploy/argocd-server --timeout=300s
+          kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
+      - name: Bootstrap root app pinned to this commit
+        env:
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          sed -e "s/targetRevision: main/targetRevision: ${SHA}/" \
+              -e "s/value: main/value: ${SHA}/" argocd/root-app.yaml | kubectl apply -f -
+      - name: Wait for every Application to sync
+        run: ./scripts/wait-for-apps.sh
+      - name: Verify workloads rolled out
+        run: |
+          for ns in web-dev web-staging web-prod; do
+            kubectl -n "$ns" rollout status deploy/web-service --timeout=240s
+            kubectl -n "$ns" get deploy,svc,hpa,pdb,netpol,cm
+          done
+          test "$(kubectl -n web-prod get deploy web-service -o jsonpath='{.spec.template.spec.securityContext.runAsNonRoot}')" = "true"
+      - name: Self-heal drill (manual drift is reverted by Argo CD)
+        run: |
+          kubectl -n web-dev scale deploy/web-service --replicas=4
+          for i in $(seq 1 60); do
+            r="$(kubectl -n web-dev get deploy web-service -o jsonpath='{.spec.replicas}')"
+            [ "$r" = "1" ] && { echo "drift reverted after ${i}x5s"; exit 0; }
+            sleep 5
+          done
+          echo "self-heal did not revert drift"; exit 1
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n argocd get applications -o wide || true
+          kubectl -n argocd get applications -o yaml | tail -200 || true
+          kubectl get pods -A || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -50 || true

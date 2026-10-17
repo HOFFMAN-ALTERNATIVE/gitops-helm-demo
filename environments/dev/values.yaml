@@ -1,0 +1,7 @@
+# dev: single replica, verbose logging, fast feedback
+replicaCount: 1
+podDisruptionBudget:
+  enabled: false
+config:
+  APP_ENV: dev
+  LOG_LEVEL: debug

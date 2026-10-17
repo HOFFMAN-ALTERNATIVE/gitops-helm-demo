@@ -1,0 +1,8 @@
+# staging: production shape at reduced scale
+replicaCount: 2
+config:
+  APP_ENV: staging
+  LOG_LEVEL: info
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }

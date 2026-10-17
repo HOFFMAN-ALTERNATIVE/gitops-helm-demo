@@ -1,0 +1,4 @@
+{{ include "web-service.fullname" . }} deployed (image {{ include "web-service.image" . }}).
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "web-service.fullname" . }} 8080:{{ .Values.service.port }}
+  curl -fsS http://127.0.0.1:8080{{ .Values.probes.path }}

@@ -1,0 +1,59 @@
+suite: app-of-apps
+templates:
+  - applications.yaml
+  - project.yaml
+tests:
+  - it: renders one Application per environment
+    template: applications.yaml
+    asserts:
+      - hasDocuments: { count: 3 }
+      - isKind: { of: Application }
+
+  - it: wires each env to its own values file and namespace
+    template: applications.yaml
+    documentIndex: 2
+    asserts:
+      - equal: { path: metadata.name, value: web-service-prod }
+      - equal: { path: "spec.source.helm.valueFiles[0]", value: ../../environments/prod/values.yaml }
+      - equal: { path: spec.destination.namespace, value: web-prod }
+
+  - it: never auto-prunes prod
+    template: applications.yaml
+    documentIndex: 2
+    asserts:
+      - equal: { path: spec.syncPolicy.automated.prune, value: false }
+      - equal: { path: spec.syncPolicy.automated.selfHeal, value: true }
+
+  - it: orders promotion with sync waves
+    template: applications.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "0"
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "2"
+        documentIndex: 2
+
+  - it: pins every child app to the requested revision
+    template: applications.yaml
+    set:
+      revision: 0123abc
+    asserts:
+      - equal: { path: spec.source.targetRevision, value: 0123abc }
+
+  - it: omits automated sync when disabled
+    template: applications.yaml
+    set:
+      environments:
+        - { name: prod, namespace: web-prod, autoSync: false }
+    asserts:
+      - notExists: { path: spec.syncPolicy.automated }
+
+  - it: restricts the project to this repo and env namespaces
+    template: project.yaml
+    asserts:
+      - equal: { path: "spec.sourceRepos[0]", value: "https://github.com/HOFFMAN-ALTERNATIVE/gitops-helm-demo.git" }
+      - lengthEqual: { path: spec.destinations, count: 3 }
+      - equal: { path: "metadata.annotations[\"argocd.argoproj.io/sync-wave\"]", value: "-1" }

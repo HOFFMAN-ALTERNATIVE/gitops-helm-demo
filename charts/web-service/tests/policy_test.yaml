@@ -1,0 +1,73 @@
+suite: availability and network policy
+templates:
+  - hpa.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+  - ingress.yaml
+  - serviceaccount.yaml
+release:
+  name: demo
+tests:
+  - it: renders no HPA by default
+    template: hpa.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders an HPA with the configured bounds
+    template: hpa.yaml
+    set:
+      autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 12, targetCPUUtilizationPercentage: 65 }
+    asserts:
+      - equal: { path: spec.minReplicas, value: 3 }
+      - equal: { path: spec.maxReplicas, value: 12 }
+      - equal: { path: "spec.metrics[0].resource.target.averageUtilization", value: 65 }
+
+  - it: refuses an inverted HPA range
+    template: hpa.yaml
+    set:
+      autoscaling: { enabled: true, minReplicas: 5, maxReplicas: 2 }
+    asserts:
+      - failedTemplate:
+          errorMessage: autoscaling.maxReplicas must be >= autoscaling.minReplicas
+
+  - it: protects availability with a PDB
+    template: pdb.yaml
+    asserts:
+      - isKind: { of: PodDisruptionBudget }
+      - equal: { path: spec.minAvailable, value: 1 }
+
+  - it: allows only same-namespace traffic by default
+    template: networkpolicy.yaml
+    asserts:
+      - lengthEqual: { path: "spec.ingress[0].from", count: 1 }
+      - equal: { path: "spec.policyTypes[0]", value: Ingress }
+
+  - it: opens to labelled namespaces (e.g. the ingress controller)
+    template: networkpolicy.yaml
+    set:
+      networkPolicy.allowedNamespaceLabels:
+        kubernetes.io/metadata.name: ingress-nginx
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[1].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: ingress-nginx
+
+  - it: renders an Ingress with TLS when enabled
+    template: ingress.yaml
+    set:
+      ingress:
+        enabled: true
+        className: nginx
+        hosts: [{ host: demo.example.com, paths: [{ path: /, pathType: Prefix }] }]
+        tls: [{ secretName: demo-tls, hosts: [demo.example.com] }]
+    asserts:
+      - equal: { path: spec.ingressClassName, value: nginx }
+      - equal: { path: "spec.rules[0].host", value: demo.example.com }
+      - equal: { path: "spec.tls[0].secretName", value: demo-tls }
+      - equal: { path: "spec.rules[0].http.paths[0].backend.service.name", value: demo-web-service }
+
+  - it: does not automount API tokens
+    template: serviceaccount.yaml
+    asserts:
+      - equal: { path: automountServiceAccountToken, value: false }

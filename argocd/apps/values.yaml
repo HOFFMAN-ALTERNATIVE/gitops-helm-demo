@@ -1,0 +1,23 @@
+repoURL: https://github.com/HOFFMAN-ALTERNATIVE/gitops-helm-demo.git
+# -- Git revision every child Application tracks (CI pins this to the commit SHA)
+revision: main
+project: web
+chartPath: charts/web-service
+
+environments:
+  - name: dev
+    namespace: web-dev
+    autoSync: true
+    prune: true
+    selfHeal: true
+  - name: staging
+    namespace: web-staging
+    autoSync: true
+    prune: true
+    selfHeal: true
+  - name: prod
+    namespace: web-prod
+    autoSync: true
+    # never let a bad commit delete prod resources automatically
+    prune: false
+    selfHeal: true

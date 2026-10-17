@@ -1,0 +1,25 @@
+# prod: HA, autoscaled, digest-pinnable, ingress opt-in per cluster
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+config:
+  APP_ENV: prod
+  LOG_LEVEL: warn
+resources:
+  requests: { cpu: 100m, memory: 96Mi }
+  limits: { memory: 192Mi }
+networkPolicy:
+  enabled: true
+  allowedNamespaceLabels:
+    kubernetes.io/metadata.name: ingress-nginx
+ingress:
+  enabled: false   # enable per cluster once an ingress controller + DNS exist
+  className: nginx
+  hosts:
+    - host: app.example.com
+      paths: [{ path: /, pathType: Prefix }]

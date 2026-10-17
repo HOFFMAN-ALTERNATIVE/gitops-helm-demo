@@ -1,0 +1,46 @@
+{{- range $i, $env := .Values.environments }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-service-{{ $env.name }}
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # promote in order: dev -> staging -> prod
+    argocd.argoproj.io/sync-wave: {{ $i | quote }}
+  labels:
+    app.kubernetes.io/part-of: gitops-helm-demo
+    environment: {{ $env.name }}
+spec:
+  project: {{ $.Values.project }}
+  source:
+    repoURL: {{ $.Values.repoURL }}
+    targetRevision: {{ $.Values.revision }}
+    path: {{ $.Values.chartPath }}
+    helm:
+      releaseName: web-service
+      valueFiles:
+        - ../../environments/{{ $env.name }}/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $env.namespace }}
+  syncPolicy:
+    {{- if $env.autoSync }}
+    automated:
+      prune: {{ $env.prune }}
+      selfHeal: {{ $env.selfHeal }}
+    {{- end }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10
+{{- end }}

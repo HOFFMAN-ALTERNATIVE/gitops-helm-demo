@@ -1,0 +1,102 @@
+# -- Number of replicas when autoscaling is disabled
+replicaCount: 2
+
+image:
+  repository: nginxinc/nginx-unprivileged
+  # -- Overrides the image tag (defaults to Chart.appVersion)
+  tag: ""
+  # -- Optional immutable digest (sha256:...). Wins over tag when set.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # -- Do not mount an API token unless the workload really talks to the API server
+  automountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+  fsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+containerPort: 8080
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: app.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+probes:
+  path: /
+  liveness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    initialDelaySeconds: 2
+    periodSeconds: 5
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  # -- Namespaces (by label) allowed to reach the service; empty = same namespace only
+  allowedNamespaceLabels: {}
+
+# -- Plain (non-secret) environment config rendered into a ConfigMap
+config: {}
+
+# -- Writable emptyDir mounts for read-only root filesystems
+tmpDirs:
+  - /tmp
+  - /var/cache/nginx
+
+topologySpread:
+  enabled: true
+  maxSkew: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

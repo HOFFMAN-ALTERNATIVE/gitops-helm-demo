@@ -1,0 +1,27 @@
+suite: values schema guards
+templates:
+  - deployment.yaml
+tests:
+  - it: rejects privilege escalation
+    set:
+      securityContext.allowPrivilegeEscalation: true
+    asserts:
+      - failedTemplate: {}
+
+  - it: rejects running as root
+    set:
+      podSecurityContext.runAsNonRoot: false
+    asserts:
+      - failedTemplate: {}
+
+  - it: rejects a malformed digest
+    set:
+      image.digest: latest
+    asserts:
+      - failedTemplate: {}
+
+  - it: rejects a pod without resource requests
+    set:
+      resources.requests: null
+    asserts:
+      - failedTemplate: {}
