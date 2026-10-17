@@ -1,4 +1,4 @@
-ARGOCD_VERSION ?= v2.13.3
+ARGOCD_VERSION ?= v3.4.11
 .PHONY: lint test validate ci kind-up bootstrap kind-down
 lint:
 	helm lint --strict charts/web-service

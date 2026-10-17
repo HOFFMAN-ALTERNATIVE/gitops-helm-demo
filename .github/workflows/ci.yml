@@ -76,7 +76,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     env:
-      ARGOCD_VERSION: v2.13.3
+      ARGOCD_VERSION: v3.4.11
     steps:
       - uses: actions/checkout@v5
       - uses: helm/kind-action@v1
